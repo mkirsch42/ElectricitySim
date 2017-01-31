@@ -37,7 +37,7 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Render new particle toggle
     private boolean showNewParticle = false;
     // The previously variables are used to hold previous states of paused
-    //    and showNewParticle while dragging
+    // and showNewParticle while dragging
     private boolean previouslyShowNewParticle = false;
     private boolean previouslyPaused = false;
     // Represents a particle to be added with a click
@@ -46,11 +46,9 @@ public class ElectricitySim extends Game implements InputProcessor {
     private boolean fullscreen = false;
     // Render paths toggle
     private boolean showPaths = false;
-    // Camera velocity
-    private double camv_x = 0;
-    private double camv_y = 0;
     // Whether a particle is being added
-    // Used to hide paused symbol even though the sim is paused while adding a new particle
+    // Used to hide paused symbol even though the sim is paused while adding a
+    // new particle
     // Also used to draw velocity vector while adding new particle
     private boolean adding = false;
     // Default k value for rendering
@@ -60,7 +58,14 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Tutorial window toggle
     private boolean showTut = true;
     // Default camera velocity
-    private final double CAM_V = 10;
+    private final float CAM_V = 10;
+    private final int[] SPEEDS = { 1, 5, 10, 20, 50, 100, 200 };
+    private int speed = 3;
+    private boolean limitPath = false;
+    private Vector3 v;
+    private ShapeRenderer sr;
+    private SpriteBatch sb;
+    private BitmapFont bf;
 
     @Override
     public void create() {
@@ -71,6 +76,9 @@ public class ElectricitySim extends Game implements InputProcessor {
 	hud = new OrthographicCamera();
 	hud.setToOrtho(false, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
 	hud.update();
+	sr = new ShapeRenderer();
+	sb = new SpriteBatch();
+	bf = new BitmapFont();
 	// Set up inputs
 	Gdx.input.setInputProcessor(this);
 	// Initialize simulation
@@ -86,18 +94,23 @@ public class ElectricitySim extends Game implements InputProcessor {
 	particles = new ArrayList<>();
     }
 
-    private void moveCamera(double x, double y) {
-	camera.translate((float) x * camera.zoom, (float) y * camera.zoom);
+    private void moveCamera() {
+
+	float x = (Gdx.input.isKeyPressed(Keys.A) ? -CAM_V : 0) + (Gdx.input.isKeyPressed(Keys.D) ? CAM_V : 0);
+	float y = (Gdx.input.isKeyPressed(Keys.W) ? -CAM_V : 0) + (Gdx.input.isKeyPressed(Keys.S) ? CAM_V : 0);
+	camera.translate(x * camera.zoom, y * camera.zoom);
+	camera.zoom *= (Gdx.input.isKeyPressed(Keys.APOSTROPHE) ? 1 / 1.05 : 1)
+		* (Gdx.input.isKeyPressed(Keys.SEMICOLON) ? 1.05 : 1);
 	camera.update();
+	K = K_DEF / camera.zoom;
 	// The mouse is moving in the game world, but not on the screen so
-	//    mouseMoved isn't triggered. But only trigger it if you aren't
-	//    already adding the particle since you already set the particle's
-	//    position by that point.
+	// mouseMoved isn't triggered. But only trigger it if you aren't
+	// already adding the particle since you already set the particle's
+	// position by that point.
 	if (!Gdx.input.isButtonPressed(Buttons.LEFT))
 	    mouseMoved(Gdx.input.getX(), Gdx.input.getY());
     }
 
-    
     // Reset the simulation and set a given preset
     private void addParticles(int i) {
 	if (i < 0 || i >= ParticlePresets.PRESETS.length)
@@ -109,7 +122,7 @@ public class ElectricitySim extends Game implements InputProcessor {
     }
 
     // Calculate the electric field at (x, y). If rendering, increase
-    //    vector length by K and possibly preview addParticle.
+    // vector length by K and possibly preview addParticle.
     public VectorPoint calcVP(double x, double y, boolean rendering) {
 	double k = rendering ? K : 1;
 	// Field vector
@@ -119,13 +132,13 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    double px = p.x;
 	    double py = p.y;
 	    // Project coordinates onto camera if rendering. Only do this
-	    //    during render because otherwise you lose precision when
-	    //    converting to floats which breaks the calculations.
+	    // during render because otherwise you lose precision when
+	    // converting to floats which breaks the calculations.
 	    if (rendering) {
-		Vector3 vec = new Vector3((float) p.x, (float) p.y, 0f);
-		vec = camera.project(vec);
-		px = (double) vec.x;
-		py = camera.viewportHeight - (double) vec.y;
+		v = new Vector3((float) p.x, (float) p.y, 0f);
+		v = camera.project(v);
+		px = (double) v.x;
+		py = camera.viewportHeight - (double) v.y;
 	    }
 	    // Distance squared
 	    double d = (x - px) * (x - px) + (y - py) * (y - py);
@@ -143,12 +156,12 @@ public class ElectricitySim extends Game implements InputProcessor {
 	// Take addParticle into account if we are rendering and we want to
 	// The math is the same as above
 	if (rendering && showNewParticle) {
-	    Vector3 p = camera.project(new Vector3((float) addParticle.x, (float) addParticle.y, 0f));
-	    double d = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
+	    v = camera.project(new Vector3((float) addParticle.x, (float) addParticle.y, 0f));
+	    double d = (x - v.x) * (x - v.x) + (y - v.y) * (y - v.y);
 	    double q = k * addParticle.q / d;
 	    double sqd = Math.sqrt(d);
-	    fx += q * (x - p.x) / sqd;
-	    fy += q * (y - p.y) / sqd;
+	    fx += q * (x - v.x) / sqd;
+	    fy += q * (y - v.y) / sqd;
 	}
 	return new VectorPoint(fx, fy);
     }
@@ -159,11 +172,10 @@ public class ElectricitySim extends Game implements InputProcessor {
     }
 
     // Updates particles. Delta gives fluctuation between
-    //    iterations, but I only ever set it to 1 because
-    //    otherwise it introduces random errors. Force
-    //    allows bypassing paused (for stepping).
+    // iterations, but I only ever set it to 1 because
+    // otherwise it introduces random errors. Force
+    // allows bypassing paused (for stepping).
     private void update(double delta, boolean force) {
-	moveCamera(camv_x * delta, camv_y * delta);
 	if (paused && !force)
 	    return;
 	// Update iteration counter
@@ -171,12 +183,12 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    p.t++;
 	}
 	// Update acceleration vectors
-	//    Do not update positions until all accelerations
-	//    are calculated since everything happens simultaneously.
+	// Do not update positions until all accelerations
+	// are calculated since everything happens simultaneously.
 	for (Particle p : particles) {
 	    VectorPoint ef = calcVP(p.x, p.y, false);
 	    // Multiply field vector by this particles charge
-	    //    to get the force, divide by mass to get acceleration.
+	    // to get the force, divide by mass to get acceleration.
 	    p.vx += delta * ef.x * p.q() / p.m;
 	    p.vy += delta * ef.y * p.q() / p.m;
 	}
@@ -191,12 +203,15 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Graphics
     @Override
     public void render() {
+	moveCamera();
 	// Update simulation
-	update(1);
+	int iters = SPEEDS[speed];
+	for (int i = 0; i < iters; i++) {
+	    update(0.05);
+	}
 	// Clear screen
 	Gdx.gl.glClearColor(0, 0, 0, 1);
 	Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-	ShapeRenderer sr = new ShapeRenderer();
 	sr.setProjectionMatrix(camera.combined);
 	// Draw field vectors
 	sr.begin(ShapeType.Line);
@@ -208,6 +223,21 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    }
 	}
 	sr.end();
+	// Draw paths
+	if (showPaths) {
+	    sr.begin(ShapeType.Line);
+	    for (Particle p : particles) {
+		sr.setColor(p.pathColor());
+		float[][] paths = p.path(limitPath);
+		for (float[] path : paths) {
+		    try {
+			sr.polyline(path);
+		    } catch (IllegalArgumentException e) {
+		    }
+		}
+	    }
+	    sr.end();
+	}
 	sr.begin(ShapeType.Filled);
 	// Draw particles
 	for (Particle p : particles) {
@@ -216,22 +246,11 @@ public class ElectricitySim extends Game implements InputProcessor {
 	}
 	// Draw velocity vector for addParticle
 	if (adding) {
-	    Vector3 v = camera.unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
-	    sr.rectLine((float) addParticle.x, (float) addParticle.y, v.x, v.y, 3 * camera.zoom, addParticle.color(), Color.BLUE);
+	    v = camera.unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
+	    sr.rectLine((float) addParticle.x, (float) addParticle.y, v.x, v.y, 3 * camera.zoom, addParticle.color(),
+		    Color.BLUE);
 	}
 	sr.end();
-	// Draw paths
-	if (showPaths) {
-	    sr.setColor(Color.CYAN);
-	    sr.begin(ShapeType.Line);
-	    for (Particle p : particles) {
-		try {
-		    sr.polyline(p.path());
-		} catch (IllegalArgumentException e) {
-		}
-	    }
-	    sr.end();
-	}
 	sr.setProjectionMatrix(hud.combined);
 	// Draw pause symbol
 	sr.begin(ShapeType.Filled);
@@ -245,10 +264,8 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    sr.setColor(Color.LIGHT_GRAY);
 	    sr.rect(20, 20, 450, 350);
 	    sr.end();
-	    SpriteBatch sb = new SpriteBatch();
 	    sb.setProjectionMatrix(hud.combined);
 	    sb.begin();
-	    BitmapFont bf = new BitmapFont();
 	    bf.setColor(Color.BLACK);
 	    bf.draw(sb,
 		    "Electricity Simulator\n" + "  Controls:\n" + "    WASD\n" + "    [ ]\n" + "    ; '\n" + "    , .\n"
@@ -270,10 +287,11 @@ public class ElectricitySim extends Game implements InputProcessor {
 
     public void drawVP(ShapeRenderer sr, int x, int y, VectorPoint vp) {
 	// Limit the vector length to maxVec
-	Vector3 v = new Vector3((float) vp.x, (float) vp.y, 0).limit2(maxVec * maxVec);
+	v = new Vector3((float) vp.x, (float) vp.y, 0).limit2(maxVec * maxVec);
 	double vx = v.x;
 	double vy = v.y;
-	// c1 is the "positive-facing" endpoint, c2 is the "negative-facing" endpoint
+	// c1 is the "positive-facing" endpoint, c2 is the "negative-facing"
+	// endpoint
 	Color c1 = Color.RED;
 	Color c2 = Color.GREEN;
 	// Draw a white dot if the vector would otherwise not be rendered
@@ -285,12 +303,14 @@ public class ElectricitySim extends Game implements InputProcessor {
 	// Set endpoints and draw them on the camera, not the game world
 	double x1 = x - vx / 2f;
 	double y1 = y - vy / 2f;
-	Vector3 v1 = camera.unproject(new Vector3((float) x1, (float) y1, 0f));
+	v = camera.unproject(new Vector3((float) x1, (float) y1, 0f));
+	x1 = v.x;
+	y1 = v.y;
 	double x2 = x + vx / 2f;
 	double y2 = y + vy / 2f;
-	Vector3 v2 = camera.unproject(new Vector3((float) x2, (float) y2, 0f));
+	v = camera.unproject(new Vector3((float) x2, (float) y2, 0f));
 
-	sr.line(v1.x, v1.y, v2.x, v2.y, c1, c2);
+	sr.line((float) x1, (float) y1, v.x, v.y, c1, c2);
     }
 
     @Override
@@ -316,24 +336,10 @@ public class ElectricitySim extends Game implements InputProcessor {
     }
 
     // Input handling
-    
+
     // Move on WASD down
     @Override
     public boolean keyDown(int keycode) {
-	switch (keycode) {
-	case Keys.W:
-	    camv_y = -CAM_V;
-	    break;
-	case Keys.S:
-	    camv_y = CAM_V;
-	    break;
-	case Keys.A:
-	    camv_x = -CAM_V;
-	    break;
-	case Keys.D:
-	    camv_x = CAM_V;
-	    break;
-	}
 	return false;
     }
 
@@ -359,6 +365,8 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    break;
 	case Keys.SPACE:
 	    paused = !paused;
+	    if (particles.size() > 0)
+		System.out.println(particles.get(0).t);
 	    break;
 	case Keys.M:
 	    showNewParticle = !showNewParticle;
@@ -379,19 +387,24 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    break;
 	case Keys.BACKSLASH:
 	    if (paused)
-		update(1, true);
-	    break;
-	// Reset camera velocities when WASD is released
-	case Keys.W:
-	case Keys.S:
-	    camv_y = 0;
-	    break;
-	case Keys.A:
-	case Keys.D:
-	    camv_x = 0;
+		for (int i = 0; i < 5; i++)
+		    update(.02, true);
 	    break;
 	case Keys.F1:
 	    showTut = !showTut;
+	    break;
+	case Keys.K:
+	    speed--;
+	    if (speed < 0)
+		speed = 0;
+	    break;
+	case Keys.L:
+	    speed++;
+	    if (speed >= SPEEDS.length)
+		speed = SPEEDS.length - 1;
+	    break;
+	case Keys.P:
+	    limitPath = !limitPath;
 	    break;
 	// Get preset index and set it up if it's a number key
 	default:
@@ -406,18 +419,6 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Allows for hold to zoom
     @Override
     public boolean keyTyped(char character) {
-	switch (character) {
-	case ';':
-	    camera.zoom *= 1.1;
-	    camera.update();
-	    K /= 1.1;
-	    break;
-	case '\'':
-	    camera.zoom /= 1.1;
-	    camera.update();
-	    K *= 1.1;
-	    break;
-	}
 	return false;
     }
 
@@ -426,11 +427,11 @@ public class ElectricitySim extends Game implements InputProcessor {
 	if (button != Buttons.LEFT)
 	    return false;
 	// Add particle at mouse
-	Vector3 v = camera.unproject(new Vector3(screenX, screenY, 0));
+	v = camera.unproject(new Vector3(screenX, screenY, 0));
 	addParticle.x = v.x;
 	addParticle.y = v.y;
 	// Store previous state, pause sim, and stop showing new particle
-	//    as it's already in the world
+	// as it's already in the world
 	previouslyPaused = paused;
 	paused = true;
 	previouslyShowNewParticle = showNewParticle;
@@ -446,12 +447,12 @@ public class ElectricitySim extends Game implements InputProcessor {
 	if (button == Buttons.MIDDLE)
 	    addParticle.q *= -1;
 	// Need to check adding because otherwise mouseUp is triggered when
-	//    double-clicking to maximize window
+	// double-clicking to maximize window
 	if (button != Buttons.LEFT || !adding)
 	    return false;
 	// Get new particle and set its velocity
 	Particle p = particles.get(particles.size() - 1);
-	Vector3 v = camera.unproject(new Vector3(screenX, screenY, 0));
+	v = camera.unproject(new Vector3(screenX, screenY, 0));
 	p.vx = (v.x - p.x) / 40d;
 	p.vy = (v.y - p.y) / 40d;
 	// Restore previous states
@@ -466,11 +467,10 @@ public class ElectricitySim extends Game implements InputProcessor {
 	return false;
     }
 
-    
     // Set addParticle's coordinates to the mouse
     @Override
     public boolean mouseMoved(int screenX, int screenY) {
-	Vector3 v = camera.unproject(new Vector3(screenX, camera.viewportHeight - screenY, 0));
+	v = camera.unproject(new Vector3(screenX, camera.viewportHeight - screenY, 0));
 	addParticle.x = v.x;
 	addParticle.y = v.y;
 	return false;
