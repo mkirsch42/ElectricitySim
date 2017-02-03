@@ -57,6 +57,8 @@ public class ElectricitySim extends Game implements InputProcessor {
     private double K = K_DEF;
     // Tutorial window toggle
     private boolean showTut = true;
+    public static double gefX = 0;
+    public static double gefY = 0;
     // Default camera velocity
     private final float CAM_V = 10;
     private final int[] SPEEDS = { 1, 5, 10, 20, 50, 100, 200 };
@@ -87,6 +89,8 @@ public class ElectricitySim extends Game implements InputProcessor {
 
     // Resets particle list and camera
     private void clearParticles() {
+	gefX = 0;
+	gefY = 0;
 	camera.zoom = 1;
 	K = K_DEF;
 	camera.update();
@@ -163,6 +167,8 @@ public class ElectricitySim extends Game implements InputProcessor {
 	    fx += q * (x - v.x) / sqd;
 	    fy += q * (y - v.y) / sqd;
 	}
+	fx += gefX;
+	fy += gefY;
 	return new VectorPoint(fx, fy);
     }
 
