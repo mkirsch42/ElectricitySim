@@ -45,7 +45,7 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Fullscreen toggle
     private boolean fullscreen = false;
     // Render paths toggle
-    private boolean showPaths = false;
+    private boolean showPaths = true;
     // Whether a particle is being added
     // Used to hide paused symbol even though the sim is paused while adding a
     // new particle
@@ -56,14 +56,14 @@ public class ElectricitySim extends Game implements InputProcessor {
     // Current k value - changes while zooming
     private double K = K_DEF;
     // Tutorial window toggle
-    private boolean showTut = true;
+    private boolean showTut = false;
     public static double gefX = 0;
     public static double gefY = 0;
     // Default camera velocity
     private final float CAM_V = 10;
-    private final int[] SPEEDS = { 1, 5, 10, 20, 50, 100, 200 };
+    private final int[] SPEEDS = { 1, 5, 10, 20, 50, 100, 200, 1000, 100000 };
     private int speed = 3;
-    private boolean limitPath = false;
+    private boolean limitPath = true;
     private Vector3 v;
     private ShapeRenderer sr;
     private SpriteBatch sb;
@@ -257,7 +257,7 @@ public class ElectricitySim extends Game implements InputProcessor {
 	// Draw particles
 	for (Particle p : particles) {
 	    sr.setColor(p.color());
-	    sr.circle((float) p.x, (float) p.y, 3f * camera.zoom);
+	    sr.circle((float) p.x, (float) p.y, 6f * camera.zoom);
 	}
 	// Draw velocity vector for addParticle
 	if (adding) {
