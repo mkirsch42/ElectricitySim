@@ -206,10 +206,19 @@ public class ElectricitySim extends Game implements InputProcessor {
 	}
     }
 
+    public void truncatePaths() {
+	if(Runtime.getRuntime().freeMemory() < Runtime.getRuntime().totalMemory() / 3) {
+	    for(Particle p : particles) {
+		p.truncatePath();
+	    }
+	}
+    }
+    
     // Graphics
     @Override
     public void render() {
 	moveCamera();
+	truncatePaths();
 	// Update simulation
 	int iters = SPEEDS[speed];
 	for (int i = 0; i < iters; i++) {

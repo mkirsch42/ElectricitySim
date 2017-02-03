@@ -14,6 +14,12 @@ public strictfp class Particle {
     public Color p;
     private static final int LIMIT_LEN = 15;
 
+    public void truncatePath() {
+	if(archive.size() > 15) {
+	    archive = new ArrayList<>(archive.subList(archive.size() - 15, archive.size()));
+	}
+    }
+    
     public float[][] path(boolean limit) {
 	if (limit) {
 	    float[][] store = new float[(archive.size() < LIMIT_LEN ? archive.size() : LIMIT_LEN) + 1][];
